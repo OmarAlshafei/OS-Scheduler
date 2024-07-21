@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="color-scheme" content="dark light">
+		<script>
+"use strict";
+
+function run() {
+	const count = parseInt(document.getElementById("count").value);
+	const time = parseInt(document.getElementById("time").value);
+	const quantum = parseInt(document.getElementById("quantum").value);
+	const scheduler = document.getElementById("scheduler").value;
+
+	const processes_list = document.getElementById("processes").value;
+
+	const processes = [];
+	for (const line of processes_list.split('\n')) {
+		if (!line.trim()) {
+			continue;
+		}
+
+		const info = line.split(" ");
+		processes.push(new Process(info[0], parseInt(info[1]), parseInt(info[2])));
+	}
+
+	console.debug(count, time, quantum, scheduler, processes);
+
+	let output;
+
+	if (scheduler == 'fifo') {
+		output = fifoScheduler(processes, time);
+	} else if (scheduler == 'sjf') {
+		output = preemptiveSJF(processes, time);
+	} else if (scheduler == 'rr') {
+		output = roundRobinScheduler(processes, time, quantum);
+	}
+
+	console.debug(output);
+
+	let actions_html = "<tr><th>Time</th><th>Process</th><th>Action</th><th>Burst time</th></tr>";
+	for (const row of output) {
+		actions_html += `<tr><td>${row[0]}</td><td>${row[1]}</td><td>${row[2]}</td><td>${row[3] || ''}</td></tr>`;
+	}
+
+	const actions = document.getElementById("actions");
+	actions.innerHTML = actions_html;
+}
+
+class Process {
+    constructor(name, arrivalTime, burstTime) {
+        this.name = name;
+        this.arrivalTime = arrivalTime;
+        this.burstTime = burstTime;
+        this.remainingTime = burstTime;
+        this.completionTime = 0;
+        this.startTime = -1;
+        this.waitTime = 0;
+        this.responseTime = -1;
+        this.turnaround = 0;
+    }
+}
+
+// Function which implements FIFO CPU scheduling algorithm
+function fifoScheduler(processes, runTime) {
+    let curTime = 0;
+    let output = [];
+    let processQueue = []; // Queue to hold processes
+    let processCount = processes.length;
+
+    while (curTime < runTime && processCount > 0) {
+        // Check for newly arrived processes and add them to the queue
+        for (let process of processes) {
+            if (process.arrivalTime === curTime) {
+                processQueue.push(process);
+                output.push([curTime, process.name, "arrived", process.remainingTime]);
+            }
+        }
+
+        // If the queue is empty, add an idle message
+        if (processQueue.length === 0) {
+            output.push([curTime, "", "Idle"]);
+            curTime += 1;
+            continue;
+        }
+
+        // Select the process at the front of the queue
+        let selectedProcess = processQueue[0];
+
+        // Schedule the selected process
+        if (selectedProcess.startTime == -1) {
+            selectedProcess.startTime = curTime;
+            selectedProcess.waitTime = curTime - selectedProcess.arrivalTime;
+            selectedProcess.responseTime = curTime - selectedProcess.arrivalTime;
+        }
+        output.push([curTime, selectedProcess.name, "selected", selectedProcess.remainingTime]);
+        selectedProcess.remainingTime -= 1;
+
+        // If the selected process finishes, mark it as finished
+        if (selectedProcess.remainingTime === 0) {
+            output.push([curTime + 1, selectedProcess.name, "finished"]);
+            selectedProcess.completionTime = curTime + 1;
+            selectedProcess.turnaround = curTime + 1 - selectedProcess.arrivalTime;
+            processQueue.shift(); // Remove the finished process from the queue
+            processCount -= 1;
+        }
+
+        curTime += 1;
+    }
+
+    return output;
+}
+
+// Preemptive Shortest Job First Algorithm
+function preemptiveSJF(processes, runTime) {
+    let curTime = 0;
+    let output = [];
+    let processCount = processes.length;
+
+    while (curTime < runTime && processCount > 0) {
+        let validProcs = processes.filter(proc => proc.arrivalTime <= curTime);
+
+        if (validProcs.length === 0) {
+            output.push([curTime, "", "Idle"]);
+            curTime += 1;
+            continue;
+        }
+
+        for (let process of validProcs) {
+            if (process.arrivalTime == curTime) {
+                output.push([curTime, process.name, "arrived", process.remainingTime]);
+            }
+        }
+
+        let shortestProcess = validProcs.reduce((minProc, proc) => {
+            return proc.remainingTime < minProc.remainingTime ? proc : minProc;
+        });
+
+        if (shortestProcess.responseTime == -1) {
+            shortestProcess.responseTime = curTime - shortestProcess.arrivalTime;
+        }
+
+        output.push([curTime, shortestProcess.name, "selected", shortestProcess.remainingTime]);
+        shortestProcess.remainingTime -= 1;
+        curTime += 1;
+
+        if (shortestProcess.remainingTime === 0) {
+            output.push([curTime, shortestProcess.name, "finished"]);
+            shortestProcess.completionTime = curTime;
+            shortestProcess.turnaround = curTime - shortestProcess.arrivalTime;
+            processes = processes.filter(proc => proc.name !== shortestProcess.name);
+            processCount -= 1;
+        }
+    }
+
+    return output;
+}
+
+// Function which implements the round-robin CPU scheduling algorithm
+function roundRobinScheduler(processes, runTime, quantum) {
+    let curTime = 0;
+    let output = [];
+    let processQueue = []; // Queue to hold processes
+    let processCount = processes.length;
+
+    while (curTime < runTime && processCount > 0) {
+        // Check for newly arrived processes and add them to the queue
+        for (let process of processes) {
+            if (process.arrivalTime === curTime) {
+                processQueue.push(process);
+                output.push([curTime, process.name, "arrived", process.remainingTime]);
+            }
+        }
+
+        // If the queue is empty, add an idle message
+        if (processQueue.length === 0) {
+            output.push([curTime, "", "Idle"]);
+            curTime += 1;
+            continue;
+        }
+
+        // Select the process at the front of the queue
+        let selectedProcess = processQueue[0];
+
+        // Schedule the selected process
+        if (selectedProcess.startTime == -1) {
+            selectedProcess.startTime = curTime;
+            selectedProcess.waitTime = curTime - selectedProcess.arrivalTime;
+            selectedProcess.responseTime = curTime - selectedProcess.arrivalTime;
+        }
+        output.push([curTime, selectedProcess.name, "selected", selectedProcess.remainingTime]);
+        selectedProcess.remainingTime -= 1;
+
+        // If the selected process finishes, mark it as finished
+        if (selectedProcess.remainingTime === 0) {
+            output.push([curTime + 1, selectedProcess.name, "finished"]);
+            selectedProcess.completionTime = curTime + 1;
+            selectedProcess.turnaround = curTime + 1 - selectedProcess.arrivalTime;
+            processQueue.shift(); // Remove the finished process from the queue
+            processCount -= 1;
+        } else {
+            // Check if the process has reached the quantum
+            if ((selectedProcess.burstTime - selectedProcess.remainingTime + 1) % quantum === 0) {
+                processQueue.push(selectedProcess); // Put the process back in the queue
+                processQueue.shift(); // Move to the next process in the queue
+            }
+        }
+
+        curTime += 1;
+    }
+
+    return output;
+}
+
+// Manual construction of a <table> element for displaying action logs
+function constructTable(output) {
+    let table = document.createElement('table');
+    let headerRow = table.insertRow();
+    let headers = ['Time', 'Process', 'Action', 'Burst Left'];
+
+    for (let header of headers) {
+        let cell = headerRow.insertCell();
+        cell.textContent = header;
+    }
+
+    for (let entry of output) {
+        let row = table.insertRow();
+        for (let data of entry) {
+            let cell = row.insertCell();
+            cell.textContent = data;
+        }
+    }
+
+    return table;
+}
+
+		</script>
+	</head>
+	<body>
+		<section>
+			<label for="count">Process Count</label>
+			<input name="count" id="count" type="number" value="2">
+			<br>
+			<label for="time">Time to run</label>
+			<input name="time" id="time" type="number" value="10">
+			<br>
+			<label for="scheduler">Scheduler</label>
+			<select name="scheduler" id="scheduler">
+				<option value="fifo">FIFO</option>
+				<option value="sjf">SJF</option>
+				<option value="rr">RR</option>
+			</select>
+			<br>
+			<label for="quantum">Quantum</label>
+			<input name="quantum" id="quantum" type="number" value="2">
+			<br>
+			<label for="processes">Processes</label>
+			<textarea name="processes" id="processes" value="P1 0 5\nP2 7 9"></textarea>
+			<br>
+			<button onclick="run()">Simulate</button>
+		</section>
+		<section>
+			<table id="actions"></table>
+		</section>
+	</body>
+</html>
